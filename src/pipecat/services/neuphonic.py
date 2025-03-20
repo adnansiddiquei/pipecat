@@ -220,8 +220,15 @@ class NeuphonicTTSService(InterruptibleTTSService):
                     await self.stop_ttfb_metrics()
 
                     audio = base64.b64decode(msg["data"]["audio"])
-                    frame = TTSAudioRawFrame(audio, self.sample_rate, 1)
-                    await self.push_frame(frame)
+
+                    chunk_size = 8192
+                    for i in range(0, len(audio), chunk_size):
+                        chunk = audio[i : i + chunk_size]
+                        if not chunk:
+                            break
+                        frame = TTSAudioRawFrame(chunk, self.sample_rate, 1)
+                        await self.push_frame(frame)
+                        await asyncio.sleep(0)  # Allow other tasks to run
 
     async def _keepalive_task_handler(self):
         while True:
@@ -337,7 +344,14 @@ class NeuphonicHttpTTSService(TTSService):
                     yield ErrorFrame(error=f"Neuphonic API error: {message.errors}")
 
                 await self.stop_ttfb_metrics()
-                yield TTSAudioRawFrame(message.data.audio, self.sample_rate, 1)
+
+                chunk_size = 8192
+                for i in range(0, len(message.data.audio), chunk_size):
+                    chunk = message.data.audio[i : i + chunk_size]
+                    if not chunk:
+                        break
+                    yield TTSAudioRawFrame(chunk, self.sample_rate, 1)
+                    await asyncio.sleep(0)  # Allow other tasks to run
         except Exception as e:
             logger.error(f"Error in run_tts: {e}")
             yield ErrorFrame(error=str(e))
